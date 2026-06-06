@@ -111,22 +111,47 @@ class CanvasRenderer:
         self.import_dialog.open = False
         self.page.update()
 
+
+
     async def _on_save(self, e):
         if not self.bridge: return
+        
         json_str = self.bridge.export_project()
+        
         if self.page.web:
-            b64_json = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
-            data_uri = f"data:application/json;base64,{b64_json}"
-            await self.page.launch_url(data_uri)
+            try:
+                import js #type: ignore
+                
+                # Encode the JSON
+                b64_json = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
+                data_uri = f"data:application/json;base64,{b64_json}"
+                
+                # Create an invisible HTML link and force a click
+                a = js.document.createElement("a")
+                a.download = "circuit.json"
+                a.href = data_uri
+                
+                js.document.body.appendChild(a)
+                a.click()
+                js.document.body.removeChild(a)
+                
+                if hasattr(self, 'show_success'):
+                    self.show_success("Circuit downloaded successfully!")
+                    
+            except Exception as ex:
+                if hasattr(self, 'show_error'):
+                    self.show_error(f"Web download failed: {ex}")
         else:
             try:
                 file_path = await ft.FilePicker().save_file(dialog_title="Save", file_name="circuit.json")
                 if file_path:
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(json_str)
-                    self.show_success(f"Saved: {file_path}")
+                    if hasattr(self, 'show_success'):
+                        self.show_success(f"Saved: {file_path}")
             except Exception as ex:
-                self.show_error(f"Save failed: {ex}")
+                if hasattr(self, 'show_error'):
+                    self.show_error(f"Save failed: {ex}")
 
     def _on_load(self, e):
         self.import_textfield.value = ""
