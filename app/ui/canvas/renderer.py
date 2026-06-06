@@ -371,8 +371,15 @@ class CanvasRenderer:
             self.bridge.profiler.start("last_render_ms")
             
         try:
-            self.viewport.width = self.page.window.width
-            self.viewport.height = self.page.window.height
+            # Web-safe dimension retrieval
+            vw = getattr(self.page, "width", None)
+            vh = getattr(self.page, "height", None)
+            if not vw and hasattr(self.page, "window"): vw = self.page.window.width
+            if not vh and hasattr(self.page, "window"): vh = self.page.window.height
+            
+            # Ensure they are never None
+            self.viewport.width = vw or 800
+            self.viewport.height = vh or 600
         except: pass
         
         is_dragging = self.wiring_start_pin is not None or self.dragging_gate is not None
