@@ -115,50 +115,39 @@ class CanvasRenderer:
 
     async def _on_save(self, e):
         if not self.bridge: return
-        json_str = self.bridge.export_project()
+        import flet as ft
         
-        if self.page.web:
-            try:
-                # We must import pyodide tools ONLY when running on the web
-                import js  # type: ignore
-                from pyodide.ffi import to_js  # type: ignore
-                
-                print("Packaging JSON for WebWorker...")
-                
-                # 1. Safely package the string into a JS Array
-                js_array = to_js([json_str])
-                
-                # 2. Package the MIME type into a standard JS Object
-                js_options = to_js({"type": "application/json"}, dict_converter=js.Object.fromEntries)
-                
-                # 3. Create the Blob securely in the background worker memory
-                blob = js.Blob.new(js_array, js_options)
-                
-                # 4. Generate the local blob URL (blob:https://...)
-                blob_url = js.URL.createObjectURL(blob)
-                
-                # 5. Let Flet natively bridge this to the main UI thread!
-                await self.page.launch_url(blob_url)
-                
+        # 1. Get the JSON and convert it to raw bytes
+        json_str = self.bridge.export_project()
+        content_bytes = json_str.encode("utf-8")
+        
+        try:
+            # 2. Trigger the universal FilePicker with the magic src_bytes parameter
+            file_path = await ft.FilePicker().save_file(
+                dialog_title="Save Circuit",
+                file_name="circuit.json",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["json"],
+                src_bytes=content_bytes  # <--- THIS IS THE MAGIC BULLET FOR WEB
+            )
+            
+            # 3. Handle the result based on the platform
+            if self.page.web:
+                # On Web, the browser downloads it automatically and file_path returns None
                 if hasattr(self, 'show_success'):
-                    self.show_success("Circuit export opened successfully!")
-                    
-            except Exception as ex:
-                print(f"⚠️ WebWorker crash: {ex}")
-                if hasattr(self, 'show_error'):
-                    self.show_error(f"Download failed: {ex}")
-        else:
-            # --- DESKTOP LOGIC ---
-            import flet as ft
-            try:
-                file_path = await ft.FilePicker().save_file(dialog_title="Save", file_name="circuit.json")
+                    self.show_success("✅ Circuit downloaded to your Downloads folder!")
+            else:
+                # On Desktop, it returns the chosen path, so we physically write the file
                 if file_path:
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(json_str)
+                    with open(file_path, "wb") as f:
+                        f.write(content_bytes)
                     if hasattr(self, 'show_success'):
-                        self.show_success(f"Saved: {file_path}")
-            except Exception as ex:
-                print(f"⚠️ Desktop save failed: {ex}")
+                        self.show_success(f"✅ Saved to: {file_path}")
+                    
+        except Exception as ex:
+            print(f"⚠️ Save error: {ex}")
+            if hasattr(self, 'show_error'):
+                self.show_error(f"Save failed: {ex}")
 
     def _on_load(self, e):
         self.import_textfield.value = ""
