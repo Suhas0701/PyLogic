@@ -120,38 +120,44 @@ class CanvasRenderer:
         
         if self.page.web:
             try:
-                import js #type: ignore
+                import js # type: ignore
                 
-                # Encode the JSON
-                b64_json = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
-                data_uri = f"data:application/json;base64,{b64_json}"
+                # 1. Safely attach data to the browser's global window object
+                js.window.temp_circuit_data = json_str
                 
-                # Create an invisible HTML link and force a click
-                a = js.document.createElement("a")
-                a.download = "circuit.json"
-                a.href = data_uri
+                # 2. Run pure JavaScript to create a Blob and force the download
+                js.window.eval("""
+                    const blob = new Blob([window.temp_circuit_data], {type: "application/json"});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.style.display = "none";
+                    a.href = url;
+                    a.download = "circuit.json";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    delete window.temp_circuit_data; // Cleanup memory
+                """)
                 
-                js.document.body.appendChild(a)
-                a.click()
-                js.document.body.removeChild(a)
+                print("✅ Web download triggered via HTML5 Blob!")
                 
-                if hasattr(self, 'show_success'):
-                    self.show_success("Circuit downloaded successfully!")
-                    
             except Exception as ex:
-                if hasattr(self, 'show_error'):
-                    self.show_error(f"Web download failed: {ex}")
+                # Print directly to the browser console so we can see any failures
+                print(f"⚠️ Web download failed: {ex}")
+                
         else:
+            # --- DESKTOP LOGIC ---
             try:
+                # Note: Ensure you have import flet as ft at the top of your file
+                import flet as ft 
                 file_path = await ft.FilePicker().save_file(dialog_title="Save", file_name="circuit.json")
                 if file_path:
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(json_str)
-                    if hasattr(self, 'show_success'):
-                        self.show_success(f"Saved: {file_path}")
+                    print(f"✅ Saved to desktop: {file_path}")
             except Exception as ex:
-                if hasattr(self, 'show_error'):
-                    self.show_error(f"Save failed: {ex}")
+                print(f"⚠️ Desktop save failed: {ex}")
 
     def _on_load(self, e):
         self.import_textfield.value = ""
