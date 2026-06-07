@@ -12,7 +12,6 @@ class UIGate:
         self._raw_world_y = world_y
         self.label = label
         
-        # Dynamic resizing based on pin count
         in_c, out_c = len(backend_comp.inputs), len(backend_comp.outputs)
         self.width = 80
         self.height = max(40, max(in_c, out_c) * 20 + 20)
@@ -27,7 +26,6 @@ class UIGate:
             y_offset = (self.height / (out_c + 1)) * (i + 1)
             self.pins.append(UIPin(self, pin_id, False, self.width, y_offset))
 
-        # Include pin labels for complex gates
         stack_controls = [
             ft.Container(
                 bgcolor=ft.Colors.BLUE_GREY_800, border_radius=5, expand=True,
@@ -36,7 +34,6 @@ class UIGate:
             )
         ]
         
-        # Draw pin names inside the gate
         for pin in self.pins:
             align_x = -0.8 if pin.is_input else 0.8
             stack_controls.append(ft.Container(
@@ -64,16 +61,14 @@ class UIGate:
         bg = ft.Colors.BLUE_GREY_800
         shadow = None
         if self.label in ["SWITCH", "CLOCK"]:
-            state_obj = getattr(self.backend_comp, "_state", None)
-            # Safely parse the Enum so the box flashes properly
-            is_on = str(state_obj).endswith("HIGH") or state_obj == 1
+            state_obj = getattr(self.backend_comp, "_state", 0)
+            is_on = state_obj > 0
             bg = ft.Colors.GREEN_600 if is_on else ft.Colors.RED_900
         elif self.label == "LED":
             is_lit = getattr(self.backend_comp, "is_lit", False)
             bg = ft.Colors.RED_400 if is_lit else ft.Colors.BLUE_GREY_900
             if is_lit: shadow = ft.BoxShadow(spread_radius=10, blur_radius=20, color=ft.Colors.RED_ACCENT_400)
         
-        # The background container is the first element in the stack
         self.control.content.controls[0].bgcolor = bg
         self.control.content.controls[0].shadow = shadow
 

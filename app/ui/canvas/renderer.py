@@ -50,8 +50,23 @@ class CanvasRenderer:
             title=ft.Text("Import Circuit JSON"),
             content=self.import_textfield,
             actions=[
-                ft.TextButton("Cancel", on_click=self._close_dialog),
+                # UPDATE THIS LINE RIGHT HERE:
+                ft.TextButton("Cancel", on_click=self._close_modals), 
                 ft.TextButton("Load", on_click=self._execute_load)
+            ]
+        )
+
+        # Phase 10: IC Packaging Dialog
+        self.package_textfield = ft.TextField(label="Custom Chip Name", hint_text="e.g., HALF_ADDER", autofocus=True)
+        self.package_dialog = ft.AlertDialog(
+            title=ft.Text("Package Custom IC"),
+            content=ft.Column([
+                ft.Text("Any SWITCH will become an Input Pin. Any LED will become an Output Pin.", size=12, color=ft.Colors.WHITE54),
+                self.package_textfield
+            ], tight=True),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: self._close_modals()),
+                ft.FilledButton("Package Circuit", icon=ft.Icons.MEMORY, on_click=self._execute_package)
             ]
         )
 
@@ -74,6 +89,9 @@ class CanvasRenderer:
                 ft.VerticalDivider(width=10, color=ft.Colors.WHITE_24),
                 ft.IconButton(icon=ft.Icons.DOWNLOAD, on_click=self._on_save, icon_color=ft.Colors.WHITE, tooltip="Save JSON"),
                 ft.IconButton(icon=ft.Icons.UPLOAD, on_click=self._on_load, icon_color=ft.Colors.WHITE, tooltip="Load JSON"),
+                ft.IconButton(icon=ft.Icons.FILTER_CENTER_FOCUS, on_click=self._on_recenter, icon_color=ft.Colors.BLUE_400, tooltip="Recenter View"), # <--- ADD THIS!
+                ft.IconButton(icon=ft.Icons.CAMERA_ALT, on_click=self._on_export_svg, icon_color=ft.Colors.WHITE, tooltip="Export Image"),
+                ft.IconButton(icon=ft.Icons.MEMORY, on_click=self._on_package_click, icon_color=ft.Colors.AMBER_400, tooltip="Package as Custom IC"), # <--- ADD THIS!
                 ft.IconButton(icon=ft.Icons.DELETE_SWEEP, on_click=self._on_clear, icon_color=ft.Colors.RED_400, tooltip="Clear Workspace"),
                 ft.Container(width=20),
                 self.profiler_text
@@ -88,8 +106,22 @@ class CanvasRenderer:
         self.bridge = bridge
 
     def _on_keyboard(self, e: ft.KeyboardEvent):
-        if e.key in ["Delete", "Backspace"] and self.bridge:
+        if not self.bridge: return
+        
+        is_cmd = e.ctrl or e.meta
+        
+        if e.key in ["Delete", "Backspace"]:
             self.bridge.delete_selected()
+        elif e.key == "Escape":                 # <--- ADD THIS
+            self.bridge.cancel_action()
+        elif e.key == "C" and is_cmd:
+            self.bridge.copy_selection()
+        elif e.key == "V" and is_cmd:
+            self.bridge.paste_selection()
+        elif e.key == "Z" and is_cmd and not e.shift:
+            self.bridge.undo()
+        elif (e.key == "Z" and is_cmd and e.shift) or (e.key == "Y" and is_cmd):
+            self.bridge.redo()
 
     def show_error(self, message: str):
         try:
@@ -107,11 +139,19 @@ class CanvasRenderer:
             self.page.update()
         except: print(f"SUCCESS: {message}")
 
-    def _close_dialog(self, e):
+    def _close_modals(self, e=None):
+        # Forcefully close any and all dialog boxes that might be open
         self.import_dialog.open = False
+        if hasattr(self, 'package_dialog'):
+            self.package_dialog.open = False
         self.page.update()
 
-
+    def _on_recenter(self, e):
+        """Resets the camera back to the origin and resets zoom to 1x."""
+        self.viewport.camera.x = -100
+        self.viewport.camera.y = -100
+        self.viewport.zoom = 1.0
+        self.update_all_components()
 
     async def _on_save(self, e):
         if not self.bridge: return
@@ -148,6 +188,40 @@ class CanvasRenderer:
             print(f"⚠️ Save error: {ex}")
             if hasattr(self, 'show_error'):
                 self.show_error(f"Save failed: {ex}")
+    
+    async def _on_export_svg(self, e):
+        if not self.bridge: return
+        import flet as ft
+        from app.exporters.svg_export import export_to_svg
+        
+        # 1. Generate the raw SVG vector string
+        svg_str = export_to_svg(self, width=3000, height=2000)
+        content_bytes = svg_str.encode("utf-8")
+        
+        try:
+            # 2. Trigger native download
+            file_path = await ft.FilePicker().save_file(
+                dialog_title="Export Circuit as SVG",
+                file_name="circuit.svg",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["svg"],
+                src_bytes=content_bytes
+            )
+            
+            if self.page.web:
+                if hasattr(self, 'show_success'):
+                    self.show_success("📸 High-Res SVG exported to Downloads!")
+            else:
+                if file_path:
+                    with open(file_path, "wb") as f:
+                        f.write(content_bytes)
+                    if hasattr(self, 'show_success'):
+                        self.show_success(f"📸 Image saved to: {file_path}")
+                        
+        except Exception as ex:
+            print(f"⚠️ Export error: {ex}")
+            if hasattr(self, 'show_error'):
+                self.show_error(f"Export failed: {ex}")
 
     def _on_load(self, e):
         self.import_textfield.value = ""
@@ -162,6 +236,19 @@ class CanvasRenderer:
         self.page.update()
         if json_str and self.bridge:
             self.bridge.import_project(json_str)
+    
+    def _on_package_click(self, e):
+        self.package_textfield.value = ""
+        if self.package_dialog not in self.page.overlay:
+            self.page.overlay.append(self.package_dialog)
+        self.package_dialog.open = True
+        self.page.update()
+
+    def _execute_package(self, e):
+        name = self.package_textfield.value.strip().upper()
+        self._close_modals()
+        if name and self.bridge:
+            self.bridge.package_subcircuit(name)
 
     def _on_clear(self, e):
         if self.bridge: self.bridge.clear_workspace()
@@ -221,13 +308,16 @@ class CanvasRenderer:
         if hit_pin:
             self.wiring_start_pin = hit_pin
             self.wiring_curr_wp = wp
+            if self.bridge: self.bridge.save_state_before_action() # Track wire attempt
             return
             
         self.dragging_gate = None
         for gate in reversed(list(self.ui_gates.values())):
             if gate.contains(wp.x, wp.y):
                 self.dragging_gate = gate
-                if self.bridge: self.bridge.select_component(gate)
+                if self.bridge: 
+                    self.bridge.select_component(gate)
+                    self.bridge.save_state_before_action() # Track drag movement
                 break
 
     def _on_pan(self, e):
@@ -253,6 +343,12 @@ class CanvasRenderer:
                 out_pin = self.wiring_start_pin if not self.wiring_start_pin.is_input else target_pin
                 in_pin = target_pin if target_pin.is_input else self.wiring_start_pin
                 if self.bridge: self.bridge.attempt_connection(out_pin, in_pin)
+            elif self.bridge:
+                self.bridge._pre_action_state = None # Abort wiring save if dropped on empty space
+                
+        elif self.dragging_gate and self.bridge:
+            self.bridge.commit_action() # Commit final position after dragging
+            
         self.wiring_start_pin = None
         self.wiring_curr_wp = None
         self.dragging_gate = None
@@ -293,9 +389,20 @@ class CanvasRenderer:
     def _on_right_click(self, e):
         x, y = self._extract_coords(e, is_delta=False)
         wp = self.viewport.screen_to_world(Point(x, y))
+        
+        # 1. Check if we right-clicked a pin (Disconnect Wire)
         hit_pin = self._hit_test_pins(wp)
         if hit_pin and hit_pin.is_input and self.bridge:
             self.bridge.remove_connection(hit_pin)
+            return
+            
+        # 2. Check if we right-clicked a gate (Instantly Delete it)
+        for gate in reversed(list(self.ui_gates.values())):
+            if gate.contains(wp.x, wp.y):
+                if self.bridge:
+                    self.bridge.select_component(gate)
+                    self.bridge.delete_selected()
+                break
 
     # --- PERFORMANCE: Viewport Culling Checks ---
     def _is_in_viewport(self, sp: Point, margin: float = 100) -> bool:
@@ -333,7 +440,6 @@ class CanvasRenderer:
         culled_count = 0
         
         for uw in self.ui_wires:
-            # CULLING: Skip wires if both start and end are far offscreen
             sp_start = self.viewport.world_to_screen(uw.source_pin.global_pos)
             sp_end = self.viewport.world_to_screen(uw.target_pin.global_pos)
             
@@ -342,7 +448,11 @@ class CanvasRenderer:
                 continue
                 
             color = uw.get_color()
-            paint = ft.Paint(color=color, stroke_width=max(2, 3*z), stroke_cap=ft.StrokeCap.ROUND)
+            
+            # Phase 10: Dynamic Bus Width Rendering!
+            bus_width = getattr(uw.backend_source_pin, 'bit_width', 1)
+            paint = ft.Paint(color=color, stroke_width=max(2, (3 + bus_width) * z), stroke_cap=ft.StrokeCap.ROUND)
+            
             path = OrthogonalRouter.route(uw.source_pin.global_pos, uw.target_pin.global_pos)
             for i in range(len(path) - 1):
                 p1 = self.viewport.world_to_screen(path[i])
@@ -361,7 +471,6 @@ class CanvasRenderer:
         pin_paint_out = ft.Paint(color=ft.Colors.GREEN_200, style=ft.PaintingStyle.FILL)
         
         for gate in self.ui_gates.values():
-            # CULLING: DOM node visibility toggle
             sp_gate = self.viewport.world_to_screen(gate.world_pos)
             is_visible = self._is_in_viewport(sp_gate, 300)
             
@@ -376,6 +485,12 @@ class CanvasRenderer:
                 sp = self.viewport.world_to_screen(pin.global_pos)
                 paint = pin_paint_in if pin.is_input else pin_paint_out
                 self.wire_canvas.shapes.append(cv.Circle(sp.x, sp.y, pin.radius * z, paint))
+                
+        self.wire_canvas.update()
+        
+        if self.bridge and getattr(self.bridge, 'profiler', None):
+            self.bridge.profiler.metrics["culled_objects"] = culled_count
+            self.profiler_text.value = self.bridge.profiler.get_summary()
                 
         self.wire_canvas.update()
         

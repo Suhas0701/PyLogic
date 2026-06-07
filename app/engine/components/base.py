@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, TYPE_CHECKING, Optional
 from ..pins import InputPin, OutputPin
-from ..types import LogicState
 
 if TYPE_CHECKING:
     from ..simulation.controller import SimulationController
@@ -21,11 +20,11 @@ class BaseComponent(ABC):
         if self._simulation_engine:
             self._simulation_engine.queue_evaluation(self)
 
-    def add_input(self, name: str) -> None:
-        self.inputs[name] = InputPin(name, self)
+    def add_input(self, name: str, bit_width: int = 1) -> None:
+        self.inputs[name] = InputPin(name, self, bit_width)
 
-    def add_output(self, name: str) -> None:
-        self.outputs[name] = OutputPin(name, self)
+    def add_output(self, name: str, bit_width: int = 1) -> None:
+        self.outputs[name] = OutputPin(name, self, bit_width)
 
     @abstractmethod
     def evaluate(self) -> None:
@@ -33,6 +32,6 @@ class BaseComponent(ABC):
 
     def reset(self) -> None:
         for pin in self.inputs.values():
-            pin.state = LogicState.UNDEFINED
+            pin.state = 0
         for pin in self.outputs.values():
-            pin.set_state(LogicState.UNDEFINED)
+            pin.set_state(0)
