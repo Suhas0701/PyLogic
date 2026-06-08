@@ -40,7 +40,7 @@ class CanvasRenderer:
             on_pan_start=self._on_pan_start, on_pan_update=self._on_pan,
             on_pan_end=self._on_pan_end, on_scroll=self._on_scroll,
             on_tap=self._on_tap, on_secondary_tap_down=self._on_right_click,
-            drag_interval=5,
+            drag_interval=16,
             content=ft.Container(bgcolor="#01000000", expand=True)
         )
         self.root_stack.controls.append(self.glass_pane)
@@ -444,7 +444,7 @@ class CanvasRenderer:
                 sp = self.viewport.world_to_screen(Point(x, y))
                 self.grid_canvas.shapes.append(cv.Circle(sp.x, sp.y, max(1, 1.5 * self.viewport.zoom), dot))
                 
-        self.grid_canvas.update()
+
 
     def _draw_wires_and_pins(self):
         self.wire_canvas.shapes.clear()
@@ -515,16 +515,7 @@ class CanvasRenderer:
                 paint = pin_paint_in if pin.is_input else pin_paint_out
                 self.wire_canvas.shapes.append(cv.Circle(sp.x, sp.y, pin.radius * z, paint))
                 
-        self.wire_canvas.update()
-        
-        # Update Profiler Readout
-        if self.bridge and self.bridge.profiler:
-            self.bridge.profiler.metrics["culled_objects"] = culled_count
-            self.profiler_text.value = self.bridge.profiler.get_summary()
-                
-        self.wire_canvas.update()
-        
-        # Update Profiler Readout
+        # Update Profiler Readout (Only need this once!)
         if self.bridge and self.bridge.profiler:
             self.bridge.profiler.metrics["culled_objects"] = culled_count
             self.profiler_text.value = self.bridge.profiler.get_summary()
