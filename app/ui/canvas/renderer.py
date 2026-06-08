@@ -411,6 +411,12 @@ class CanvasRenderer:
 
     def _draw_grid(self):
         self.grid_canvas.shapes.clear()
+        
+        # PERFORMANCE: Level of Detail (LOD) - Kill the grid if zoomed out past 40%
+        if self.viewport.zoom < 0.4:
+            self.grid_canvas.update()
+            return
+
         origin = self.viewport.world_to_screen(Point(0, 0))
         cross = ft.Paint(color=ft.Colors.GREEN_700, stroke_width=2)
         
@@ -421,17 +427,21 @@ class CanvasRenderer:
             
         dot = ft.Paint(color=ft.Colors.WHITE_24, style=ft.PaintingStyle.FILL)
         
-        # Determine strict bounds for grid loop to avoid 1600+ iterations
-        start_x = int(self.viewport.screen_to_world(Point(0, 0)).x // 100) * 100
-        end_x = int(self.viewport.screen_to_world(Point(self.viewport.width, 0)).x // 100) * 100 + 100
-        start_y = int(self.viewport.screen_to_world(Point(0, 0)).y // 100) * 100
-        end_y = int(self.viewport.screen_to_world(Point(0, self.viewport.height)).y // 100) * 100 + 100
+        # PERFORMANCE: Scale grid spacing based on zoom to prevent exponential iteration lag
+        spacing = 100 if self.viewport.zoom >= 0.8 else 200
 
-        for x in range(start_x, end_x, 100):
-            for y in range(start_y, end_y, 100):
+        # Determine strict bounds for grid loop
+        start_x = int(self.viewport.screen_to_world(Point(0, 0)).x // spacing) * spacing
+        end_x = int(self.viewport.screen_to_world(Point(self.viewport.width, 0)).x // spacing) * spacing + spacing
+        start_y = int(self.viewport.screen_to_world(Point(0, 0)).y // spacing) * spacing
+        end_y = int(self.viewport.screen_to_world(Point(0, self.viewport.height)).y // spacing) * spacing + spacing
+
+        for x in range(start_x, end_x, spacing):
+            for y in range(start_y, end_y, spacing):
                 if x == 0 and y == 0: continue
                 sp = self.viewport.world_to_screen(Point(x, y))
                 self.grid_canvas.shapes.append(cv.Circle(sp.x, sp.y, max(1, 1.5 * self.viewport.zoom), dot))
+                
         self.grid_canvas.update()
 
     def _draw_wires_and_pins(self):
@@ -470,7 +480,13 @@ class CanvasRenderer:
         pin_paint_in = ft.Paint(color=ft.Colors.BLUE_200, style=ft.PaintingStyle.FILL)
         pin_paint_out = ft.Paint(color=ft.Colors.GREEN_200, style=ft.PaintingStyle.FILL)
         
+        # PERFORMANCE: Calculate LOD thresholds once per frame
+        hide_pin_names = z < 0.6
+        hide_main_labels = z < 0.3
+        hide_pin_dots = z < 0.3
+
         for gate in self.ui_gates.values():
+            # CULLING: DOM node visibility toggle
             sp_gate = self.viewport.world_to_screen(gate.world_pos)
             is_visible = self._is_in_viewport(sp_gate, 300)
             
@@ -481,6 +497,17 @@ class CanvasRenderer:
                 culled_count += 1
                 continue
                 
+            # LOD: Toggle Flet Text visibilities to save DOM rendering
+            if getattr(gate.control.content.controls[0], 'content', None):
+                gate.control.content.controls[0].content.visible = not hide_main_labels
+                
+            for i in range(1, len(gate.control.content.controls)):
+                gate.control.content.controls[i].visible = not hide_pin_names
+                
+            # Skip drawing the tiny pin circles if zoomed too far out
+            if hide_pin_dots:
+                continue
+                
             for pin in gate.pins:
                 sp = self.viewport.world_to_screen(pin.global_pos)
                 paint = pin_paint_in if pin.is_input else pin_paint_out
@@ -488,7 +515,8 @@ class CanvasRenderer:
                 
         self.wire_canvas.update()
         
-        if self.bridge and getattr(self.bridge, 'profiler', None):
+        # Update Profiler Readout
+        if self.bridge and self.bridge.profiler:
             self.bridge.profiler.metrics["culled_objects"] = culled_count
             self.profiler_text.value = self.bridge.profiler.get_summary()
                 
