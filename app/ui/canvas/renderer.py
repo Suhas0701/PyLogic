@@ -89,14 +89,16 @@ class CanvasRenderer:
                 ft.VerticalDivider(width=10, color=ft.Colors.WHITE_24),
                 ft.IconButton(icon=ft.Icons.DOWNLOAD, on_click=self._on_save, icon_color=ft.Colors.WHITE, tooltip="Save JSON"),
                 ft.IconButton(icon=ft.Icons.UPLOAD, on_click=self._on_load, icon_color=ft.Colors.WHITE, tooltip="Load JSON"),
-                ft.IconButton(icon=ft.Icons.FILTER_CENTER_FOCUS, on_click=self._on_recenter, icon_color=ft.Colors.BLUE_400, tooltip="Recenter View"), # <--- ADD THIS!
+                ft.IconButton(icon=ft.Icons.FILTER_CENTER_FOCUS, on_click=self._on_recenter, icon_color=ft.Colors.BLUE_400, tooltip="Recenter View"),
                 ft.IconButton(icon=ft.Icons.CAMERA_ALT, on_click=self._on_export_svg, icon_color=ft.Colors.WHITE, tooltip="Export Image"),
-                ft.IconButton(icon=ft.Icons.MEMORY, on_click=self._on_package_click, icon_color=ft.Colors.AMBER_400, tooltip="Package as Custom IC"), # <--- ADD THIS!
+                ft.IconButton(icon=ft.Icons.MEMORY, on_click=self._on_package_click, icon_color=ft.Colors.AMBER_400, tooltip="Package as Custom IC"),
                 ft.IconButton(icon=ft.Icons.DELETE_SWEEP, on_click=self._on_clear, icon_color=ft.Colors.RED_400, tooltip="Clear Workspace"),
                 ft.Container(width=20),
                 self.profiler_text
-            ]),
-            top=15, left=15, bgcolor=ft.Colors.BLUE_GREY_900, border_radius=8, padding=5,
+            ], scroll=ft.ScrollMode.AUTO), # <--- FIX 1: Allow horizontal scrolling
+            
+            top=15, left=15, right=15,     # <--- FIX 2: Constrain the bounding box to the screen
+            bgcolor=ft.Colors.BLUE_GREY_900, border_radius=8, padding=5,
             shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLACK_54)
         )
         self.root_stack.controls.append(self.toolbar)
